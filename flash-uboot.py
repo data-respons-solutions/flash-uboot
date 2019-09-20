@@ -59,12 +59,9 @@ class mtd_device(object):
     
     def erase_section(self, section):
         subprocess.check_call(['/usr/sbin/flash_erase', self.partitions[section]['dev'], '0', '0'])
-
-    def offset(self, section):
-        return self.partitions[section]['offset']
     
     def size(self, section):
-        return self.partitions[section]['size']
+        return abs(self.partitions[section]['size'], self.partitions[section]['offset'])
     
     def read(self, section, size):
         return get_buf(self.partitions[section]['dev'], self.partitions[section]['offset'], size)
@@ -104,8 +101,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='u-boot programmer')
     parser.add_argument('--mtd', action='store_true', help='uboot located in mtd device')
     parser.add_argument('--mmc', help='uboot located in mmc device')
-    parser.add_argument('--get-version', action='append', help=\
-                        'Read version string from flash. Define this argument for every section to read. Available sections: "uboot", "spl"')
+    parser.add_argument('--get-version', help=\
+                        'Read version string from flash section. Available sections: "uboot", "spl"')
+    parser.add_argument('--get-file-version', help='Read version string from file')
     parser.add_argument('--write', action='store_true', help='Write to flash')
     parser.add_argument('--verify', action='store_true', help='Verify only, ignores write flag')
     parser.add_argument('--spl', help='SPL binary')
@@ -115,68 +113,66 @@ if __name__ == "__main__":
     parser.add_argument('--gpio', type=int, help='Flash write protect gpio number')
     args = parser.parse_args()
 
-    if not (args.spl or args.uboot or args.get_version):
-        print('uboot binary not provided (--uboot and/or --spl)', file=sys.stderr)
-        sys.exit(1)
-    else:
-        for file in [args.spl, args.uboot]:
+    for file in [args.spl, args.uboot, args.get_file_version]:
             if file and not os.path.isfile(file):
-                print(f'{file} not found', file=sys.stderr)
+                print(f'file not found: {file}', file=sys.stderr)
                 sys.exit(1)
-
-    if not (args.mtd or args.mmc or args.get_version):
-        print('flash location not defined (--mtd and/or --mmc)', file=sys.stderr)
-        sys.exit(1)
     
-    data = {'flash' : {}}
+    if not (args.get_file_version or args.get_version):
+        if not (args.spl or args.uboot):
+            print('uboot binary not provided (--uboot and/or --spl)', file=sys.stderr)
+            sys.exit(1)
+            
+        if (args.mtd and args.mmc) or not (args.mtd or args.mmc):
+            print('Select one(and only one) flash device', file=sys.stderr)
+            sys.exit(1)        
+        
+    data = {}
+
+    ''' get file version '''
+    if args.get_file_version:
+        file = create_file_data(args.get_file_version)
+        print(parse_version(file["buf"]))
+        sys.exit(0)
+        
+        
+    ''' get flash device '''
+    if args.mtd:
+        data['flash'] = mtd_device(args.spl_offset, args.uboot_offset)
+        
+    ''' get version from flash '''
+    if args.get_version:
+        if not data['flash'].has_section(args.get_version):
+            print(f'No section "{args.get_version}" in flash', file=sys.stderr)
+            sys.exit(1)
+            
+        print(get_version(data["flash"], args.get_version))
+        sys.exit(0)
+    
+    ''' get input files '''
     if args.spl:
         data['spl'] = create_file_data(args.spl)
     if args.uboot:
         data['uboot'] = create_file_data(args.uboot)
-    if args.mtd:
-        data['flash']['mtd'] = mtd_device(args.spl_offset, args.uboot_offset)
-    if args.mmc:
-        data['flash']['mmc'] = {
-            'device' : args.mmc,
-            }
-    
-    ''' get version '''
-    if args.get_version:
-        for section in args.get_version:
-            for name, flash in data['flash'].items():
-                if not flash.has_section(section):
-                    print(f'{name}: section "{section}" not available', file=sys.stderr)
-                    sys.exit(1)
-                    
-        for section in args.get_version: 
-            for name, flash in data['flash'].items():
-                print(f'{name}: {section}: version: "{get_version(flash, section)}"')
-
-            if section in data:
-                print(f'file: {section}: version "{parse_version(data[section]["buf"])}"')
-
-        sys.exit(0)
-                
+        
     ''' verify '''
     for section in ('spl', 'uboot'):
         if section in data:
-            for name, flash in data['flash'].items():
-                if not flash.has_section(section):
-                    print(f'{name}: {section} defined but section not detected in flash {flash}', file=sys.stderr)
-                    sys.exit(1)
+            if not flash.has_section(section):
+                print(f'flash: {section} defined but section not detected in flash {flash}', file=sys.stderr)
+                sys.exit(1)
+            
+            if data[section]['size'] > flash.size(section):
+                print(f'flash: {section} file ({data[section]["size"]}b) larger than flash section ({flash.size(section)}b)')
+                sys.exit(1)
                 
-                flash_section_size = flash.size(section) - flash.offset(section)
-                if data[section]['size'] > flash_section_size:
-                    print(f'{name}: {section} file ({data[section]["size"]}b) larger than flash section ({flash_section_size}b)')
-                    sys.exit(1)
-                    
-                flash_section_md5 = get_md5(flash.read(section, data[section]['size']))
+            flash_section_md5 = get_md5(flash.read(section, data[section]['size']))
 
-                if data[section]['md5'] != flash_section_md5:
-                    print(f'{name}: {section}: NEED TO FLASH: {data[section]["size"]}b: file ({data[section]["md5"]}) != flash ({flash_section_md5})')
-                    data[section]['need_to_flash'] = True
-                else:
-                    print(f'{name}: {section}: ok: {data[section]["size"]}b: file ({data[section]["md5"]}) == flash ({flash_section_md5})')         
+            if data[section]['md5'] != flash_section_md5:
+                print(f'flash: {section}: NEED TO FLASH: {data[section]["size"]}b: file ({data[section]["md5"]}) != flash ({flash_section_md5})')
+                data[section]['need_to_flash'] = True
+            else:
+                print(f'flash: {section}: ok: {data[section]["size"]}b: file ({data[section]["md5"]}) == flash ({flash_section_md5})')         
     if args.verify:
         # We check if any section was not identical. Return 1 if mismatch found
         for section in ('spl', 'uboot'):
@@ -191,7 +187,7 @@ if __name__ == "__main__":
             if section in data:
                 if 'need_to_flash' in data[section] and data[section]['need_to_flash']:
                     for name, flash in data['flash'].items():
-                        print(f'{name}: {section}: FLASH')
+                        print(f'flash: {section}: FLASHING')
                         if args.gpio:
                             # enable write
                             set_gpio(args.gpio, False)
