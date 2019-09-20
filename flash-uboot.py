@@ -28,6 +28,44 @@ def create_file_data(file):
     data['md5'] = get_md5(data['buf'])
     return data
 
+class mmc_device(object):
+    def __init__(self, device, spl_offset, uboot_offset):
+        self.dev = device
+        self.size = int(subprocess.run(['blockdev', '--getsize64', device],
+                                        check=True, capture_output=True).stdout)
+        self.sections = {
+            'spl' : {
+                'offset' : spl_offset,
+                },
+            'uboot' : {
+                'offset' : uboot_offset,
+                },
+            }
+
+    def has_section(self, section):
+        return (section in self.sections)
+    
+    def erase_section(self, section):
+        pass
+    
+    def size(self, section):
+        return abs(self.size, self.sections[section]['offset'])
+    
+    def read(self, section, size):
+        return get_buf(self.dev, self.sections[section]['offset'], size)
+    
+    def write(self, section, buf):
+        with open(f'/sys/block/os.path.basename(self.dev)/force_ro', 'r+') as lock:
+            # enable write
+            lock.write('0')
+            try:
+                with open(self.dev, 'wb') as f:
+                    f.seek(self.sections[section]['offset'])
+                    f.write(buf)
+                    f.flush()
+            finally:
+                lock.write('1')
+
 class mtd_device(object):
     def __init__(self, spl_offset, uboot_offset):    
         self.partitions = {}
@@ -58,7 +96,8 @@ class mtd_device(object):
         return (section in self.partitions)
     
     def erase_section(self, section):
-        subprocess.check_call(['/usr/sbin/flash_erase', self.partitions[section]['dev'], '0', '0'])
+        subprocess.run(['/usr/sbin/flash_erase', self.partitions[section]['dev'], '0', '0'],
+                            check=True, capture_output=True)
     
     def size(self, section):
         return abs(self.partitions[section]['size'], self.partitions[section]['offset'])
