@@ -137,11 +137,12 @@ def hex_int(x):
     return int(x, 0)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='u-boot programmer')
-    parser.add_argument('--mtd', action='store_true', help='uboot located in mtd device')
-    parser.add_argument('--mmc', help='uboot located in mmc device')
+    parser = argparse.ArgumentParser(description='u-boot programmer',
+                                     epilog='Returns 0 for success and 1 for failure')
+    parser.add_argument('--mtd', action='store_true', help='Flash type mtd. Will search for /proc/mtd partitions "u-boot" and "spl"')
+    parser.add_argument('--mmc', help='Flash type mmc')
     parser.add_argument('--get-version', help=\
-                        'Read version string from flash section. Available sections: "uboot", "spl"')
+                        'Read version string from section in flash. Available sections: "uboot", "spl"')
     parser.add_argument('--get-file-version', help='Read version string from file')
     parser.add_argument('--write', action='store_true', help='Write to flash')
     parser.add_argument('--verify', action='store_true', help='Verify only, ignores write flag')
