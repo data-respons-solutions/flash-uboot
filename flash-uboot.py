@@ -76,14 +76,19 @@ class mtd_device(object):
 
 def parse_version(buf):
     max_length = 1024
+    min_length = 15
     not_found = 'UNAVAILABLE'
     version_token = str.encode('U-Boot')
     try:
-        start = buf.index(version_token)       
-        end = buf.index(b'\x00', start + 1)
-        if (end - start) > max_length:
-            return not_found
-        return buf[start:end].decode().strip('\n')
+        end = -1
+        while True:
+            start = buf.index(version_token, end + 1)
+            end = buf.index(b'\x00', start + 1)
+            if (end - start) <= max_length and (end - start) > min_length:
+                try:
+                    return buf[start:end].decode().strip('\n')
+                except:
+                    start = buf.index(version_token, end + 1)       
     except:
         pass
     return not_found
