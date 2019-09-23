@@ -9,6 +9,9 @@ from argparse import RawDescriptionHelpFormatter
 
 VERSION_STRING = '@@VERSION@@'
 
+class InvalidArgument(Exception):
+    pass
+    
 def set_gpio(gpio, state):   
     with open(f'/sys/class/gpio/gpio{gpio}/value', 'w') as f:
         f.write(str(int(state)))
@@ -33,6 +36,9 @@ def create_file_data(file):
 
 class mmc_device(object):
     def __init__(self, device, spl_offset, uboot_offset):
+        if device == None:
+            raise InvalidArgument()
+        
         self.dev = device
         self.size = int(subprocess.run(['blockdev', '--getsize64', device],
                                         check=True, capture_output=True).stdout)
@@ -192,8 +198,12 @@ Supported (--flash) types are:
         sys.exit(0)        
 
     ''' get flash device '''
-    data['flash'] = flash_types[args.flash](args.DEVICE, args.spl_offset, args.uboot_offset)
-        
+    try:
+        data['flash'] = flash_types[args.flash](args.DEVICE, args.spl_offset, args.uboot_offset)
+    except InvalidArgument as e:
+        print(f'flash: {args.flash}: DEVICE argument required', file=sys.stderr)
+        sys.exit(1)
+
     ''' get version from flash '''
     if args.get_version:
         if not data['flash'].has_section(args.get_version):
