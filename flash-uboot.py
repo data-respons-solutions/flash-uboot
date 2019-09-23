@@ -163,6 +163,9 @@ Example, write spl and uboot to mmc:
  
 Example, write spl and uboot to mtd:
  $ flash-uboot --flash mtd --spl SPL_signed --spl-offset 0x400 --uboot u-boot-ivt.img_signed --write
+ 
+Example, read uboot version from mmc:
+$ flash-uboot --flash mmc --get-version uboot --uboot-offset 0x40000 /dev/mmcblk0boot0
 ''',
                                      epilog='''Return value:
 0 for success, 1 for failure                                
