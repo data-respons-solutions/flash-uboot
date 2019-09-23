@@ -2,4 +2,9 @@ all: set-version
 
 .PHONY: set-version
 set-version:
-	sed -i 's/@@VERSION@@/$(shell git describe --long --tags --dirty)/g' flash-uboot.py
+	cp flash-uboot.py flash-uboot
+	sed -i 's/@@VERSION@@/$(shell git describe --dirty --tags --always)/g' flash-uboot
+	
+.PHONY: clean
+clean:
+	rm -f flash-uboot
