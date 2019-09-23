@@ -155,6 +155,12 @@ if __name__ == "__main__":
 Supported (--flash) types are:
 - mtd (Will scan /proc/mtd for partitions "spl" and "u-boot")
 - mmc (Will operate on DEVICE)
+
+Example, write spl and uboot to mmc:
+ $ flash-uboot --flash mmc --spl SPL_signed --spl-offset 0x400 --uboot u-boot-ivt.img_signed --uboot-offset 0x40000 --write /dev/mmcblk0boot0
+ 
+Example, write spl and uboot to mtd:
+ $ flash-uboot --flash mtd --spl SPL_signed --spl-offset 0x400 --uboot u-boot-ivt.img_signed --write
 ''',
                                      epilog='''Return value:
 0 for success, 1 for failure                                
