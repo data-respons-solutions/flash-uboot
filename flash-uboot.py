@@ -3,8 +3,8 @@
 import sys
 import os
 import hashlib
-import argparse
 import subprocess
+import argparse
 from argparse import RawDescriptionHelpFormatter
 
 VERSION_STRING = '@@VERSION@@'
@@ -50,6 +50,10 @@ class mmc_device(object):
                 'offset' : uboot_offset,
                 },
             }
+    
+    def _force_ro(self, value):
+        with open(f'/sys/block/{os.path.basename(self._dev)}/force_ro', 'r+') as f:
+            f.write(value)
 
     def has_section(self, section):
         return (section in self._sections)
@@ -64,16 +68,14 @@ class mmc_device(object):
         return get_buf(self._dev, self._sections[section]['offset'], size)
     
     def write(self, section, buf):
-        with open(f'/sys/block/os.path.basename(self._dev)/force_ro', 'r+') as lock:
-            # enable write
-            lock.write('0')
-            try:
-                with open(self._dev, 'wb') as f:
-                    f.seek(self._sections[section]['offset'])
-                    f.write(buf)
-                    f.flush()
-            finally:
-                lock.write('1')
+        self._force_ro('0')
+        try:
+            with open(self._dev, 'wb') as f:
+                f.seek(self._sections[section]['offset'])
+                f.write(buf)
+                f.flush()
+        finally:
+            self._force_ro('1')
 
 class mtd_device(object):
     def __init__(self, device, spl_offset, uboot_offset):    
