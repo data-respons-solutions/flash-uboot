@@ -7,6 +7,8 @@ import argparse
 import subprocess
 from argparse import RawDescriptionHelpFormatter
 
+VERSION_STRING = '@@VERSION@@'
+
 def set_gpio(gpio, state):   
     with open(f'/sys/class/gpio/gpio{gpio}/value', 'w') as f:
         f.write(str(int(state)))
@@ -163,6 +165,7 @@ Supported (--flash) types are:
     parser.add_argument('--uboot', help='u-boot binary')
     parser.add_argument('--uboot-offset', default=0, type=hex_int, help='u-boot offset in flash')
     parser.add_argument('--gpio', type=int, help='Flash write protect gpio number')
+    parser.add_argument('-v', '--version', action='version', version=VERSION_STRING)
     parser.add_argument('DEVICE', nargs='?', help='Flash device')
     args = parser.parse_args()
 
