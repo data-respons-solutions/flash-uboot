@@ -39,10 +39,10 @@ class mmc_device(object):
         if device == None:
             raise InvalidArgument()
         
-        self.dev = device
-        self.size = int(subprocess.run(['blockdev', '--getsize64', device],
+        self._dev = device
+        self._size = int(subprocess.run(['blockdev', '--getsize64', device],
                                         check=True, capture_output=True).stdout)
-        self.sections = {
+        self._sections = {
             'spl' : {
                 'offset' : spl_offset,
                 },
@@ -52,24 +52,24 @@ class mmc_device(object):
             }
 
     def has_section(self, section):
-        return (section in self.sections)
+        return (section in self._sections)
     
     def erase_section(self, section):
         pass
     
     def size(self, section):
-        return abs(self.size - self.sections[section]['offset'])
+        return abs(self._size - self._sections[section]['offset'])
     
     def read(self, section, size):
-        return get_buf(self.dev, self.sections[section]['offset'], size)
+        return get_buf(self._dev, self._sections[section]['offset'], size)
     
     def write(self, section, buf):
-        with open(f'/sys/block/os.path.basename(self.dev)/force_ro', 'r+') as lock:
+        with open(f'/sys/block/os.path.basename(self._dev)/force_ro', 'r+') as lock:
             # enable write
             lock.write('0')
             try:
-                with open(self.dev, 'wb') as f:
-                    f.seek(self.sections[section]['offset'])
+                with open(self._dev, 'wb') as f:
+                    f.seek(self._sections[section]['offset'])
                     f.write(buf)
                     f.flush()
             finally:
@@ -77,7 +77,7 @@ class mmc_device(object):
 
 class mtd_device(object):
     def __init__(self, device, spl_offset, uboot_offset):    
-        self.partitions = {}
+        self._partitions = {}
         
          # Read partition data 
         with open('/proc/mtd', 'r') as mtd:
@@ -90,33 +90,33 @@ class mtd_device(object):
             size = int('0x' +  s.split(' ')[1], 0)
             name = s.split(' ')[3].strip('\"')
             if name == 'u-boot':
-                self.partitions['uboot'] = {
+                self._partitions['uboot'] = {
                     'dev' : dev,
                     'size' : size,
                     'offset' : uboot_offset,
                     }
             elif name == 'spl':
-                self.partitions['spl'] = {
+                self._partitions['spl'] = {
                     'dev' : dev,
                     'size' : size,
                     'offset' : spl_offset,
                     }
     def has_section(self, section):
-        return (section in self.partitions)
+        return (section in self._partitions)
     
     def erase_section(self, section):
-        subprocess.run(['/usr/sbin/flash_erase', self.partitions[section]['dev'], '0', '0'],
+        subprocess.run(['/usr/sbin/flash_erase', self._partitions[section]['dev'], '0', '0'],
                             check=True, capture_output=True)
     
     def size(self, section):
-        return abs(self.partitions[section]['size'] - self.partitions[section]['offset'])
+        return abs(self._partitions[section]['size'] - self._partitions[section]['offset'])
     
     def read(self, section, size):
-        return get_buf(self.partitions[section]['dev'], self.partitions[section]['offset'], size)
+        return get_buf(self._partitions[section]['dev'], self._partitions[section]['offset'], size)
     
     def write(self, section, buf):
-        with open(self.partitions[section]['dev'], 'wb') as f:
-            f.seek(self.partitions[section]['offset'])
+        with open(self._partitions[section]['dev'], 'wb') as f:
+            f.seek(self._partitions[section]['offset'])
             f.write(buf)
 
 def parse_version(buf):
