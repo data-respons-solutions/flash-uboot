@@ -5,6 +5,7 @@ import os
 import hashlib
 import argparse
 import subprocess
+from argparse import RawDescriptionHelpFormatter
 
 def set_gpio(gpio, state):   
     with open(f'/sys/class/gpio/gpio{gpio}/value', 'w') as f:
@@ -49,7 +50,7 @@ class mmc_device(object):
         pass
     
     def size(self, section):
-        return abs(self.size, self.sections[section]['offset'])
+        return abs(self.size - self.sections[section]['offset'])
     
     def read(self, section, size):
         return get_buf(self.dev, self.sections[section]['offset'], size)
@@ -67,7 +68,7 @@ class mmc_device(object):
                 lock.write('1')
 
 class mtd_device(object):
-    def __init__(self, spl_offset, uboot_offset):    
+    def __init__(self, device, spl_offset, uboot_offset):    
         self.partitions = {}
         
          # Read partition data 
@@ -100,7 +101,7 @@ class mtd_device(object):
                             check=True, capture_output=True)
     
     def size(self, section):
-        return abs(self.partitions[section]['size'], self.partitions[section]['offset'])
+        return abs(self.partitions[section]['size'] - self.partitions[section]['offset'])
     
     def read(self, section, size):
         return get_buf(self.partitions[section]['dev'], self.partitions[section]['offset'], size)
@@ -136,11 +137,22 @@ def get_version(flash, section):
 def hex_int(x):
     return int(x, 0)
 
+flash_types = {
+    'mtd' : mtd_device,
+    'mmc' : mmc_device,
+    }
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='u-boot programmer',
-                                     epilog='Returns 0 for success and 1 for failure')
-    parser.add_argument('--mtd', action='store_true', help='Flash type mtd. Will search for /proc/mtd partitions "u-boot" and "spl"')
-    parser.add_argument('--mmc', help='Flash type mmc')
+    parser = argparse.ArgumentParser(description='''Write uboot binary to different types of flash.
+Supported (--flash) types are:
+- mtd (Will scan /proc/mtd for partitions "spl" and "u-boot")
+- mmc (Will operate on DEVICE)
+''',
+                                     epilog='''Return value:
+0 for success, 1 for failure                                
+''',
+                                     formatter_class=RawDescriptionHelpFormatter)
+    parser.add_argument('--flash', help='Flash type')
     parser.add_argument('--get-version', help=\
                         'Read version string from section in flash. Available sections: "uboot", "spl"')
     parser.add_argument('--get-file-version', help='Read version string from file')
@@ -151,6 +163,7 @@ if __name__ == "__main__":
     parser.add_argument('--uboot', help='u-boot binary')
     parser.add_argument('--uboot-offset', default=0, type=hex_int, help='u-boot offset in flash')
     parser.add_argument('--gpio', type=int, help='Flash write protect gpio number')
+    parser.add_argument('DEVICE', nargs='?', help='Flash device')
     args = parser.parse_args()
 
     for file in [args.spl, args.uboot, args.get_file_version]:
@@ -163,9 +176,9 @@ if __name__ == "__main__":
             print('uboot binary not provided (--uboot and/or --spl)', file=sys.stderr)
             sys.exit(1)
             
-        if (args.mtd and args.mmc) or not (args.mtd or args.mmc):
-            print('Select one(and only one) flash device', file=sys.stderr)
-            sys.exit(1)        
+        if not args.flash in flash_types:
+            print(f'Flash type {args.flash} not supported', file=sys.stderr)
+            sys.exit(1)
         
     data = {}
 
@@ -173,12 +186,10 @@ if __name__ == "__main__":
     if args.get_file_version:
         file = create_file_data(args.get_file_version)
         print(parse_version(file["buf"]))
-        sys.exit(0)
-        
-        
+        sys.exit(0)        
+
     ''' get flash device '''
-    if args.mtd:
-        data['flash'] = mtd_device(args.spl_offset, args.uboot_offset)
+    data['flash'] = flash_types[args.flash](args.DEVICE, args.spl_offset, args.uboot_offset)
         
     ''' get version from flash '''
     if args.get_version:
@@ -198,15 +209,15 @@ if __name__ == "__main__":
     ''' verify '''
     for section in ('spl', 'uboot'):
         if section in data:
-            if not flash.has_section(section):
+            if not data['flash'].has_section(section):
                 print(f'flash: {section} defined but section not detected in flash {flash}', file=sys.stderr)
                 sys.exit(1)
             
-            if data[section]['size'] > flash.size(section):
-                print(f'flash: {section} file ({data[section]["size"]}b) larger than flash section ({flash.size(section)}b)')
+            if data[section]['size'] > data['flash'].size(section):
+                print(f'flash: {section} file ({data[section]["size"]}b) larger than flash section ({data["flash"].size(section)}b)')
                 sys.exit(1)
                 
-            flash_section_md5 = get_md5(flash.read(section, data[section]['size']))
+            flash_section_md5 = get_md5(data['flash'].read(section, data[section]['size']))
 
             if data[section]['md5'] != flash_section_md5:
                 print(f'flash: {section}: NEED TO FLASH: {data[section]["size"]}b: file ({data[section]["md5"]}) != flash ({flash_section_md5})')
@@ -226,18 +237,17 @@ if __name__ == "__main__":
         for section in ('spl', 'uboot'):
             if section in data:
                 if 'need_to_flash' in data[section] and data[section]['need_to_flash']:
-                    for name, flash in data['flash'].items():
-                        print(f'flash: {section}: FLASHING')
+                    print(f'flash: {section}: FLASHING')
+                    if args.gpio:
+                        # enable write
+                        set_gpio(args.gpio, False)
+                    try:
+                        data['flash'].erase_section(section)
+                        data['flash'].write(section, data[section]['buf'])  
+                    finally:
                         if args.gpio:
-                            # enable write
-                            set_gpio(args.gpio, False)
-                        try:
-                            flash.erase_section(section)
-                            flash.write(section, data[section]['buf'])  
-                        finally:
-                            if args.gpio:
-                                # disable write
-                                set_gpio(args.gpio, True)
+                            # disable write
+                            set_gpio(args.gpio, True)
 
     sys.exit(0)
  
