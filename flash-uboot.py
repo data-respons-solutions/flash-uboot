@@ -97,6 +97,12 @@ class mtd_device(object):
                     'size' : size,
                     'offset' : uboot_offset,
                     }
+            elif name == 'u-boot-second':
+                self._partitions['uboot-second'] = {
+                    'dev': dev,
+                    'size': size,
+                    'offset': uboot_offset,
+                    }
             elif name == 'spl':
                 self._partitions['spl'] = {
                     'dev' : dev,
@@ -229,9 +235,10 @@ $ flash-uboot --flash mmc --get-version uboot --uboot-offset 0x40000 /dev/mmcblk
         data['spl'] = create_file_data(args.spl)
     if args.uboot:
         data['uboot'] = create_file_data(args.uboot)
+        data['uboot-second'] = create_file_data(args.uboot)
         
     ''' verify '''
-    for section in ('spl', 'uboot'):
+    for section in ('spl', 'uboot', 'uboot-second'):
         if section in data:
             if not data['flash'].has_section(section):
                 print(f'flash: {section} defined but section not detected in flash {flash}', file=sys.stderr)
@@ -250,7 +257,7 @@ $ flash-uboot --flash mmc --get-version uboot --uboot-offset 0x40000 /dev/mmcblk
                 print(f'flash: {section}: ok: {data[section]["size"]}b: file ({data[section]["md5"]}) == flash ({flash_section_md5})')         
     if args.verify:
         # We check if any section was not identical. Return 1 if mismatch found
-        for section in ('spl', 'uboot'):
+        for section in ('spl', 'uboot', 'uboot-second'):
             if section in data:
                 if 'need_to_flash' in data[section] and data[section]['need_to_flash']:
                     sys.exit(1)
@@ -258,7 +265,7 @@ $ flash-uboot --flash mmc --get-version uboot --uboot-offset 0x40000 /dev/mmcblk
     
     ''' write '''
     if args.write:
-        for section in ('spl', 'uboot'):
+        for section in ('spl', 'uboot', 'uboot-second'):
             if section in data:
                 if 'need_to_flash' in data[section] and data[section]['need_to_flash']:
                     print(f'flash: {section}: FLASHING')
