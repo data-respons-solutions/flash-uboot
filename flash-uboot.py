@@ -5,6 +5,7 @@ import os
 import hashlib
 import subprocess
 import argparse
+import atexit
 from argparse import RawDescriptionHelpFormatter
 
 VERSION_STRING = '@@VERSION@@'
@@ -38,7 +39,6 @@ class mmc_device(object):
     def __init__(self, device, spl_offset, uboot_offset):
         if device == None:
             raise InvalidArgument()
-        
         self._dev = device
         self._size = int(subprocess.run(['blockdev', '--getsize64', device],
                                         check=True, capture_output=True).stdout)
@@ -50,11 +50,17 @@ class mmc_device(object):
                 'offset' : uboot_offset,
                 },
             }
+        self.force_ro = self.get_force_ro()
+        atexit.register(self.cleanup)
     
+    def get_force_ro(self):
+        with open(f'/sys/block/{os.path.basename(self._dev)}/force_ro', 'r') as f:
+            return False if f.read().strip() == '0' else True
+        
     def _force_ro(self, value):
         with open(f'/sys/block/{os.path.basename(self._dev)}/force_ro', 'r+') as f:
             f.write(value)
-
+            
     def has_section(self, section):
         return (section in self._sections)
     
@@ -68,14 +74,18 @@ class mmc_device(object):
         return get_buf(self._dev, self._sections[section]['offset'], size)
     
     def write(self, section, buf):
-        self._force_ro('0')
-        try:
-            with open(self._dev, 'wb') as f:
-                f.seek(self._sections[section]['offset'])
-                f.write(buf)
-                f.flush()
-        finally:
+        if self.force_ro:
+            self._force_ro('0')
+            self.force_ro = False
+        with open(self._dev, 'wb') as f:
+            f.seek(self._sections[section]['offset'])
+            f.write(buf)
+            f.flush() 
+                       
+    def cleanup(self):
+        if not self.force_ro:
             self._force_ro('1')
+        
 
 class mtd_device(object):
     def __init__(self, device, spl_offset, uboot_offset):    
