@@ -40,7 +40,7 @@ class mmc_device(object):
         if device == None:
             raise InvalidArgument()
         self._dev = device
-        self._size = int(subprocess.run(['blockdev', '--getsize64', device],
+        self._size = int(subprocess.run(['/sbin/blockdev', '--getsize64', device],
                                         check=True, capture_output=True).stdout)
         self._sections = {
             'spl' : {
