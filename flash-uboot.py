@@ -230,18 +230,23 @@ $ flash-uboot --flash mmc --get-version uboot --uboot-offset 0x40000 /dev/mmcblk
         print(get_version(data["flash"], args.get_version))
         sys.exit(0)
     
+    sections = []
     ''' get input files '''
     if args.spl:
         data['spl'] = create_file_data(args.spl)
+        sections.append('spl')
     if args.uboot:
         data['uboot'] = create_file_data(args.uboot)
-        data['uboot-second'] = create_file_data(args.uboot)
+        sections.append('uboot')
+        if data['flash'].has_section('uboot-second'):
+            data['uboot-second'] = create_file_data(args.uboot)
+            sections.append('uboot-second')
         
     ''' verify '''
-    for section in ('spl', 'uboot', 'uboot-second'):
+    for section in sections:
         if section in data:
             if not data['flash'].has_section(section):
-                print(f'flash: {section} defined but section not detected in flash {flash}', file=sys.stderr)
+                print(f'flash: {section} defined but section not detected in flash {args.flash}', file=sys.stderr)
                 sys.exit(1)
             
             if data[section]['size'] > data['flash'].size(section):
@@ -257,7 +262,7 @@ $ flash-uboot --flash mmc --get-version uboot --uboot-offset 0x40000 /dev/mmcblk
                 print(f'flash: {section}: ok: {data[section]["size"]}b: file ({data[section]["md5"]}) == flash ({flash_section_md5})')         
     if args.verify:
         # We check if any section was not identical. Return 1 if mismatch found
-        for section in ('spl', 'uboot', 'uboot-second'):
+        for section in sections:
             if section in data:
                 if 'need_to_flash' in data[section] and data[section]['need_to_flash']:
                     sys.exit(1)
@@ -265,7 +270,7 @@ $ flash-uboot --flash mmc --get-version uboot --uboot-offset 0x40000 /dev/mmcblk
     
     ''' write '''
     if args.write:
-        for section in ('spl', 'uboot', 'uboot-second'):
+        for section in sections:
             if section in data:
                 if 'need_to_flash' in data[section] and data[section]['need_to_flash']:
                     print(f'flash: {section}: FLASHING')
