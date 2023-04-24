@@ -119,6 +119,12 @@ class mtd_device(object):
                     'size' : size,
                     'offset' : spl_offset,
                     }
+            elif name == 'spl-second':
+                self._partitions['spl-second'] = {
+                    'dev': dev,
+                    'size': size,
+                    'offset': spl_offset,
+                    }
     def has_section(self, section):
         return (section in self._partitions)
     
@@ -245,6 +251,9 @@ $ flash-uboot --flash mmc --get-version uboot --uboot-offset 0x40000 /dev/mmcblk
     if args.spl:
         data['spl'] = create_file_data(args.spl)
         sections.append('spl')
+        if data['flash'].has_section('spl-second'):
+            data['spl-second'] = create_file_data(args.spl)
+            sections.append('spl-second')
     if args.uboot:
         data['uboot'] = create_file_data(args.uboot)
         sections.append('uboot')
