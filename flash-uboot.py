@@ -246,21 +246,25 @@ $ flash-uboot --flash mmc --get-version uboot --uboot-offset 0x40000 /dev/mmcblk
         print(get_version(data["flash"], args.get_version))
         sys.exit(0)
     
-    sections = []
+    sections = set()
     ''' get input files '''
     if args.spl:
         data['spl'] = create_file_data(args.spl)
-        sections.append('spl')
+        sections.add('spl')
         if data['flash'].has_section('spl-second'):
             data['spl-second'] = create_file_data(args.spl)
-            sections.append('spl-second')
+            sections.add('spl-second')
+        else:
+            print('Warning: power fail safe SPL update not supported')
     if args.uboot:
         data['uboot'] = create_file_data(args.uboot)
-        sections.append('uboot')
+        sections.add('uboot')
         if data['flash'].has_section('uboot-second'):
             data['uboot-second'] = create_file_data(args.uboot)
-            sections.append('uboot-second')
-        
+            sections.add('uboot-second')
+        else:
+            print('Warning: power fail safe u-boot update not supported')
+
     ''' verify '''
     for section in sections:
         if section in data:
@@ -289,20 +293,31 @@ $ flash-uboot --flash mmc --get-version uboot --uboot-offset 0x40000 /dev/mmcblk
     
     ''' write '''
     if args.write:
-        for section in sections:
-            if section in data:
-                if 'need_to_flash' in data[section] and data[section]['need_to_flash']:
-                    print(f'flash: {section}: FLASHING')
-                    if args.gpio:
-                        # enable write
-                        set_gpio(args.gpio, False)
-                    try:
-                        data['flash'].erase_section(section)
-                        data['flash'].write(section, data[section]['buf'])  
-                    finally:
-                        if args.gpio:
-                            # disable write
-                            set_gpio(args.gpio, True)
-
+        # For flashing procedure it's important to:
+        # Erase SPL, Erase u-boot, Write u-boot, write SPL.
+        # First secondary them primary
+        primary = ('spl' if 'spl' in sections else None, 'uboot' if 'uboot' in sections else None)
+        secondary = ('spl-second' if 'spl-second' in sections else None, 'uboot-second' if 'uboot-second' in sections else None)
+        if args.gpio:
+            # enable write
+            set_gpio(args.gpio, False)
+        try:
+            for spl, uboot in [secondary, primary]:
+                if spl is not None:
+                    if spl is not None and 'need_to_flash' in data[spl] and data[spl]['need_to_flash']:
+                        print(f'erase: {spl}')
+                        data['flash'].erase_section(spl)
+                    if uboot is not None and 'need_to_flash' in data[uboot] and data[uboot]['need_to_flash']:
+                        print(f'erase: {uboot}')
+                        data['flash'].erase_section(uboot)
+                        print(f'write: {uboot}')
+                        data['flash'].write(uboot, data[uboot]['buf'])
+                    if spl is not None and 'need_to_flash' in data[spl] and data[spl]['need_to_flash']:
+                        print(f'write: {spl}')
+                        data['flash'].write(spl, data[spl]['buf'])
+        finally:
+            if args.gpio:
+                # disable write
+                set_gpio(args.gpio, True)
     sys.exit(0)
  
